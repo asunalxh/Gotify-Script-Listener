@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+import json
+import os
+import pty
+import re
+import select
+import subprocess
+import sys
+import urllib.request
+import urllib.error
+
+GLOBAL_CONFIG_DIR = os.path.expanduser("~/.config/gotify")
+GLOBAL_CONFIG_FILE = os.path.join(GLOBAL_CONFIG_DIR, "config.json")
+PROJECT_CONFIG_FILE = ".gotify.json"
+
+PROMPTS = [
+    ("server_url", "Server URL"),
+    ("app_token", "App token"),
+    ("priority",  "Priority"),
+    ("title",     "Title"),
+]
+
+DEFAULTS = {
+    "server_url": "",
+    "app_token": "",
+    "priority": 5,
+    "title": "gotify-cli",
+    "watch": [],
+}
+
+
+def load_json(path):
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def merge_config(base, override):
+    for key in base:
+        if key in override and override[key]:
+            base[key] = override[key]
+    return base
+
+
+def get_config(global_mode=False):
+    config = dict(DEFAULTS)
+    if global_mode:
+        merge_config(config, load_json(GLOBAL_CONFIG_FILE))
+    else:
+        merge_config(config, load_json(PROJECT_CONFIG_FILE))
+    return config
+
+
+def send_gotify(config, message, title=None):
+    url = config["server_url"].rstrip("/") + "/message?token=" + config["app_token"]
+    data = json.dumps({
+        "message": message,
+        "priority": int(config["priority"]),
+        "title": title if title else config["title"],
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read())
+            print("Message sent successfully (id: {})".format(result.get("id", "?")))
+            return 0
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print("Error: HTTP {} - {}".format(e.code, body), file=sys.stderr)
+        return 1
+    except urllib.error.URLError as e:
+        print("Error: {}".format(e.reason), file=sys.stderr)
+        return 1
+
+
+def write_config(target_file, config):
+    target_dir = os.path.dirname(target_file)
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
+    with open(target_file, "w") as f:
+        json.dump(config, f, indent=4, ensure_ascii=False)
+        f.write("\n")
+
+
+def cmd_init(global_mode=False, inherit=False):
+    if global_mode:
+        if not sys.stdin.isatty():
+            print("Error: 'init --global' requires an interactive terminal.", file=sys.stderr)
+            return 1
+        target_file = GLOBAL_CONFIG_FILE
+        source_cfg = dict(DEFAULTS)
+    else:
+        target_file = PROJECT_CONFIG_FILE
+        global_cfg = load_json(GLOBAL_CONFIG_FILE)
+        source_cfg = dict(DEFAULTS)
+        merge_config(source_cfg, global_cfg)
+
+        if inherit or (global_cfg.get("server_url") and global_cfg.get("app_token")):
+            if os.path.exists(target_file):
+                print("{} already exists (skipped).".format(target_file))
+                return 0
+            cfg = {}
+            if not sys.stdin.isatty():
+                cfg["title"] = source_cfg["title"]
+                cfg["priority"] = source_cfg["priority"]
+            else:
+                print("server_url: {} (inherited from global)".format(global_cfg["server_url"]))
+                print("app_token: {} (inherited from global)".format(global_cfg["app_token"]))
+                for key in ("title", "priority"):
+                    label = dict(PROMPTS)[key]
+                    default = str(source_cfg.get(key, ""))
+                    prompt = "{} [{}]: ".format(label, default) if default else "{}: ".format(label)
+                    try:
+                        value = input(prompt)
+                    except (EOFError, KeyboardInterrupt):
+                        print("\nAborted.")
+                        return 1
+                    cfg[key] = value.strip() if value.strip() else source_cfg.get(key, "")
+            write_config(target_file, cfg)
+            print("Created {} (url/token inherited from global)".format(target_file))
+            return 0
+
+        if not sys.stdin.isatty():
+            print("Error: 'init' requires an interactive terminal (global config not set).", file=sys.stderr)
+            return 1
+
+    if os.path.exists(target_file):
+        try:
+            answer = input("{} already exists. Overwrite? [y/N] ".format(target_file))
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return 1
+        if answer.strip().lower() not in ("y", "yes"):
+            print("Aborted.")
+            return 1
+
+    config = {}
+    for key, label in PROMPTS:
+        default = str(source_cfg.get(key, ""))
+        prompt = "{} [{}]: ".format(label, default) if default else "{}: ".format(label)
+        try:
+            value = input(prompt)
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return 1
+        config[key] = value.strip() if value.strip() else source_cfg.get(key, "")
+
+    write_config(target_file, config)
+    print("Created {}".format(target_file))
+    return 0
+
+
+def cmd_config(global_mode, args):
+    target_file = GLOBAL_CONFIG_FILE if global_mode else PROJECT_CONFIG_FILE
+    target_dir = os.path.dirname(target_file)
+
+    if not args:
+        cfg = load_json(target_file)
+        for key in DEFAULTS:
+            val = cfg.get(key) if key in cfg else None
+            if val is not None:
+                print("{} = {}".format(key, val))
+        return 0
+
+    key = args[0]
+    if key not in DEFAULTS:
+        print("Error: unknown key '{}'. Valid keys: {}".format(key, ", ".join(DEFAULTS)), file=sys.stderr)
+        return 1
+
+    if len(args) == 1:
+        cfg = load_json(target_file)
+        val = cfg.get(key) if key in cfg else None
+        if val is not None:
+            print("{} = {}".format(key, val))
+        return 0
+
+    value = " ".join(args[1:])
+    cfg = load_json(target_file)
+    cfg[key] = value
+
+    if not global_mode:
+        global_cfg = load_json(GLOBAL_CONFIG_FILE)
+        for k in list(cfg.keys()):
+            if k in global_cfg and cfg[k] == global_cfg[k]:
+                del cfg[k]
+
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
+
+    with open(target_file, "w") as f:
+        json.dump(cfg, f, indent=4, ensure_ascii=False)
+        f.write("\n")
+
+    mode = "project" if target_file == PROJECT_CONFIG_FILE else "global"
+    print("Set {} = {} in {} config ({}).".format(key, value, mode, target_file))
+    return 0
+
+
+def cmd_run(config, command):
+    master_fd, slave_fd = pty.openpty()
+    p = subprocess.Popen(command, stdout=slave_fd, stderr=slave_fd)
+    os.close(slave_fd)
+
+    output_lines = []
+    buf = b""
+    cmd_str = " ".join(command)
+    short_name = cmd_str.split()[0]
+
+    send_gotify(config, "Command started: {}".format(cmd_str),
+                title="{} started".format(short_name))
+
+    patterns = []
+    for item in config.get("watch", []):
+        try:
+            patterns.append(re.compile(str(item)))
+        except re.error as e:
+            print("Warning: invalid watch regex '{}': {}".format(item, e), file=sys.stderr)
+
+    while True:
+        try:
+            rlist, _, _ = select.select([master_fd], [], [], 0.2)
+        except (OSError, ValueError):
+            rlist = []
+
+        if rlist:
+            try:
+                data = os.read(master_fd, 4096)
+            except OSError:
+                data = b""
+            if not data:
+                break
+            buf += data
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                line_str = line.rstrip(b"\r").decode("utf-8", errors="replace")
+                output_lines.append(line_str)
+                sys.stdout.write(line_str + "\n")
+                sys.stdout.flush()
+
+                for pattern in patterns:
+                    if pattern.search(line_str):
+                        send_gotify(config, line_str,
+                                    title="{} matched".format(short_name))
+        elif p.poll() is not None:
+            break
+
+    try:
+        while True:
+            data = os.read(master_fd, 4096)
+            if not data:
+                break
+            buf += data
+    except OSError:
+        pass
+
+    os.close(master_fd)
+
+    if buf:
+        text = buf.rstrip(b"\r").decode("utf-8", errors="replace")
+        for line in text.split("\n"):
+            output_lines.append(line)
+            sys.stdout.write(line + "\n")
+            for pattern in matches:
+                if pattern.search(line):
+                    send_gotify(config, line,
+                                title="{} matched".format(short_name))
+        sys.stdout.flush()
+
+    exit_code = p.wait()
+
+    if exit_code != 0:
+        title = "{} failed (exit: {})".format(short_name, exit_code)
+        message = "Command exited with code {}".format(exit_code)
+    else:
+        title = "{} completed".format(short_name)
+        message = "Command finished successfully"
+
+    url = config["server_url"].rstrip("/") + "/message?token=" + config["app_token"]
+    data = json.dumps({
+        "message": message,
+        "priority": int(config["priority"]),
+        "title": title,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read())
+            print("Notification sent (id: {})".format(result.get("id", "?")))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print("Notify error: HTTP {} - {}".format(e.code, body), file=sys.stderr)
+    except urllib.error.URLError as e:
+        print("Notify error: {}".format(e.reason), file=sys.stderr)
+
+    return exit_code
+
+
+def cmd_install(user_mode=True):
+    if user_mode:
+        install_dir = os.path.expanduser("~/.local/bin")
+    else:
+        install_dir = os.environ.get("INSTALL_DIR", "/usr/local/bin")
+    target = os.path.join(install_dir, "gotify")
+    script_path = os.path.abspath(__file__)
+
+    os.makedirs(install_dir, exist_ok=True)
+
+    try:
+        with open(script_path, "rb") as src:
+            content = src.read()
+    except OSError as e:
+        print("Error: cannot read self: {}".format(e), file=sys.stderr)
+        return 1
+
+    try:
+        with open(target, "wb") as dst:
+            dst.write(content)
+        os.chmod(target, 0o755)
+    except PermissionError:
+        hint = "sudo gotify install" if not user_mode else "gotify install --user"
+        print("Error: permission denied. Try: {}".format(hint), file=sys.stderr)
+        return 1
+    except OSError as e:
+        print("Error: write failed: {}".format(e), file=sys.stderr)
+        return 1
+
+    print("Installed to {}".format(target))
+
+    if not os.path.exists(GLOBAL_CONFIG_FILE):
+        write_config(GLOBAL_CONFIG_FILE, dict(DEFAULTS))
+        print("Created global config at {}".format(GLOBAL_CONFIG_FILE))
+    else:
+        print("Global config already exists (skipped)")
+
+    return 0
+
+
+def cmd_uninstall(user_mode=True):
+    if user_mode:
+        install_dir = os.path.expanduser("~/.local/bin")
+    else:
+        install_dir = os.environ.get("INSTALL_DIR", "/usr/local/bin")
+    target = os.path.join(install_dir, "gotify")
+
+    if os.path.isfile(target):
+        try:
+            os.remove(target)
+        except PermissionError:
+            print("Error: permission denied. Try: sudo gotify uninstall", file=sys.stderr)
+            return 1
+        print("Removed {}".format(target))
+    else:
+        print("{} not found (skipped)".format(target))
+
+    if os.path.isdir(GLOBAL_CONFIG_DIR):
+        try:
+            answer = input("Remove global config at {}? [y/N] ".format(GLOBAL_CONFIG_DIR))
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return 1
+        if answer.strip().lower() in ("y", "yes"):
+            import shutil
+            shutil.rmtree(GLOBAL_CONFIG_DIR)
+            print("Removed {}".format(GLOBAL_CONFIG_DIR))
+        else:
+            print("Global config kept at {}".format(GLOBAL_CONFIG_DIR))
+
+    return 0
+
+
+def parse_global(args):
+    if "--global" in args:
+        args.remove("--global")
+        return True
+    return False
+
+
+def print_help():
+    print("""Usage: gotify [options] <command> [args...]
+
+Send:
+  gotify <message>                  send a message
+  <command> | gotify                pipe message to gotify
+
+Run:
+  gotify run <command...>           run command, notify on match/completion/failure
+
+Config:
+  gotify config                     show current config
+  gotify config <key>               show a config value
+  gotify config <key> <value>       set a config value
+  gotify init                       create config file
+
+System:
+  gotify install [--system]           install gotify (default: ~/.local/bin)
+  gotify uninstall [--system]         uninstall gotify
+
+Options:
+  --global      use global config instead of project config
+  --inherit     inherit url/token from global (for init only)
+  -h, --help    show this help""")
+
+
+def parse_flag(args, flag):
+    return flag in args
+
+def main():
+    args = sys.argv[1:]
+    global_mode = parse_global(args)
+
+    if not args:
+        message = sys.stdin.read().strip() if not sys.stdin.isatty() else None
+        if not message:
+            print_help()
+            return 1
+        config = get_config(global_mode)
+        if not config["server_url"] or not config["app_token"]:
+            print("Error: gotify not configured. Run: gotify init --global", file=sys.stderr)
+            return 1
+        return send_gotify(config, message)
+
+    arg1 = args[0]
+    if arg1 in ("-h", "--help"):
+        print_help()
+        return 0
+    if arg1 == "install":
+        user_mode = not parse_flag(args[1:], "--system")
+        return cmd_install(user_mode=user_mode)
+    if arg1 == "uninstall":
+        user_mode = not parse_flag(args[1:], "--system")
+        return cmd_uninstall(user_mode=user_mode)
+    if arg1 == "run":
+        command = args[1:]
+        if not command:
+            print("Error: run requires a command.", file=sys.stderr)
+            return 1
+        config = get_config(global_mode)
+        if not config["server_url"] or not config["app_token"]:
+            print("Error: gotify not configured. Run: gotify init --global", file=sys.stderr)
+            return 1
+        return cmd_run(config, command)
+    if arg1 == "init":
+        inherit = parse_flag(args[1:], "--inherit")
+        return cmd_init(global_mode=global_mode, inherit=inherit)
+    if arg1 == "config":
+        return cmd_config(global_mode, args[1:])
+
+    message = " ".join(args)
+    config = get_config(global_mode)
+    if not config["server_url"]:
+        print("Error: server_url not configured.", file=sys.stderr)
+        print("Set it via: gotify config server_url <url>", file=sys.stderr)
+        return 1
+    if not config["app_token"]:
+        print("Error: app_token not configured.", file=sys.stderr)
+        print("Set it via: gotify config app_token <token>", file=sys.stderr)
+        return 1
+    return send_gotify(config, message)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
