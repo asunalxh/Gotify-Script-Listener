@@ -279,10 +279,10 @@ def cmd_run(config, command):
 
     if exit_code != 0:
         title = "{} failed (exit: {})".format(short_name, exit_code)
-        message = "Command exited with code {}".format(exit_code)
+        message = "{} (exit: {})".format(cmd_str, exit_code)
     else:
         title = "{} completed".format(short_name)
-        message = "Command finished successfully"
+        message = "{} finished".format(cmd_str)
 
     url = config["server_url"].rstrip("/") + "/message?token=" + config["app_token"]
     data = json.dumps({
