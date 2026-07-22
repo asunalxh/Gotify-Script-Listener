@@ -238,13 +238,14 @@ def cmd_run(config, command, shutdown=False):
                 data = b""
             if not data:
                 break
+            sys.stdout.buffer.write(data)
+            sys.stdout.flush()
+
             buf += data
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
                 line_str = line.rstrip(b"\r").decode("utf-8", errors="replace")
                 output_lines.append(line_str)
-                sys.stdout.write(line_str + "\n")
-                sys.stdout.flush()
 
                 for pattern in patterns:
                     if pattern.search(line_str):
@@ -258,6 +259,8 @@ def cmd_run(config, command, shutdown=False):
             data = os.read(master_fd, 4096)
             if not data:
                 break
+            sys.stdout.buffer.write(data)
+            sys.stdout.flush()
             buf += data
     except OSError:
         pass
@@ -268,8 +271,7 @@ def cmd_run(config, command, shutdown=False):
         text = buf.rstrip(b"\r").decode("utf-8", errors="replace")
         for line in text.split("\n"):
             output_lines.append(line)
-            sys.stdout.write(line + "\n")
-            for pattern in matches:
+            for pattern in patterns:
                 if pattern.search(line):
                     send_gotify(config, line,
                                 title="{} matched".format(short_name))
