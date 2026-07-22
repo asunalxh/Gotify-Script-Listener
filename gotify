@@ -306,7 +306,7 @@ def cmd_run(config, command, shutdown=False):
         print("Notify error: {}".format(e.reason), file=sys.stderr)
 
     if shutdown:
-        shutdown_cmd = os.environ.get("SHUTDOWN_CMD", "sudo shutdown -h now")
+        shutdown_cmd = os.environ.get("SHUTDOWN_CMD", "shutdown -h now")
         print("Shutting down ({}: {})...".format("SHUTDOWN_CMD" if "SHUTDOWN_CMD" in os.environ else "default", shutdown_cmd))
         result = subprocess.run(shutdown_cmd, shell=True, capture_output=True, text=True)
         if result.returncode != 0:
