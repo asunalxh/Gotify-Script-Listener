@@ -205,7 +205,7 @@ def cmd_config(global_mode, args):
     return 0
 
 
-def cmd_run(config, command):
+def cmd_run(config, command, shutdown=False):
     master_fd, slave_fd = pty.openpty()
     p = subprocess.Popen(command, stdout=slave_fd, stderr=slave_fd)
     os.close(slave_fd)
@@ -303,6 +303,10 @@ def cmd_run(config, command):
     except urllib.error.URLError as e:
         print("Notify error: {}".format(e.reason), file=sys.stderr)
 
+    if shutdown:
+        print("Shutting down...")
+        subprocess.run(["shutdown", "-h", "now"], check=False)
+
     return exit_code
 
 
@@ -394,7 +398,8 @@ Send:
   <command> | gotify                pipe message to gotify
 
 Run:
-  gotify run <command...>           run command, notify on match/completion/failure
+  gotify run [--shutdown] <command...>
+                                run command, notify on match/completion/failure
 
 Config:
   gotify config                     show current config
@@ -441,15 +446,17 @@ def main():
         user_mode = not parse_flag(args[1:], "--system")
         return cmd_uninstall(user_mode=user_mode)
     if arg1 == "run":
-        command = args[1:]
-        if not command:
+        rest = args[1:]
+        do_shutdown = parse_flag(rest, "--shutdown")
+        rest = [a for a in rest if a != "--shutdown"]
+        if not rest:
             print("Error: run requires a command.", file=sys.stderr)
             return 1
         config = get_config(global_mode)
         if not config["server_url"] or not config["app_token"]:
             print("Error: gotify not configured. Run: gotify init --global", file=sys.stderr)
             return 1
-        return cmd_run(config, command)
+        return cmd_run(config, rest, shutdown=do_shutdown)
     if arg1 == "init":
         inherit = parse_flag(args[1:], "--inherit")
         return cmd_init(global_mode=global_mode, inherit=inherit)
