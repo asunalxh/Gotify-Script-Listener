@@ -9,6 +9,7 @@ import struct
 import subprocess
 import sys
 import termios
+import time
 import urllib.request
 import urllib.error
 
@@ -294,7 +295,7 @@ def run_once(config, command, attempt=None):
     return p.wait(), short_name, cmd_str
 
 
-def cmd_run(config, command, shutdown=False, restart=False, retries=-1):
+def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3):
     cmd_str = " ".join(command)
     short_name = cmd_str.split()[0]
 
@@ -309,7 +310,8 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=-1):
             short_name, exit_code, attempt)
         send_gotify(config, retry_msg,
                     title="[RESTART] {}".format(short_name))
-        print("[RESTART] {} failed (exit: {}), restarting (attempt {})".format(short_name, exit_code, attempt))
+        print("[RESTART] {} failed (exit: {}), restarting (attempt {}) in {}s...".format(short_name, exit_code, attempt, delay))
+        time.sleep(delay)
 
     if exit_code != 0:
         title = "{} failed (exit: {})".format(short_name, exit_code)
@@ -437,10 +439,11 @@ Send:
   <command> | gotify                pipe message to gotify
 
 Run:
-  gotify run [--shutdown] [--restart [--retries N]] <command...>
+  gotify run [--shutdown] [--restart [--retries N] [--delay SEC]] <command...>
                                 run command, notify on match/completion/failure
                                 --restart: re-run on failure until success
                                 --retries: max restarts (-1 = infinite, default)
+                                --delay: wait SEC seconds before restart (default 3)
 
 Config:
   gotify config                     show current config
@@ -491,12 +494,21 @@ def main():
         do_shutdown = parse_flag(rest, "--shutdown")
         do_restart = parse_flag(rest, "--restart")
         retries = -1
+        delay = 3
         if "--retries" in rest:
             idx = rest.index("--retries")
             try:
                 retries = int(rest[idx + 1])
             except (ValueError, IndexError):
                 print("Error: --retries requires a number.", file=sys.stderr)
+                return 1
+            del rest[idx:idx + 2]
+        if "--delay" in rest:
+            idx = rest.index("--delay")
+            try:
+                delay = max(0, float(rest[idx + 1]))
+            except (ValueError, IndexError):
+                print("Error: --delay requires a number.", file=sys.stderr)
                 return 1
             del rest[idx:idx + 2]
         rest = [a for a in rest if a not in ("--shutdown", "--restart")]
@@ -507,7 +519,7 @@ def main():
         if not config["server_url"] or not config["app_token"]:
             print("Error: gotify not configured. Run: gotify init --global", file=sys.stderr)
             return 1
-        return cmd_run(config, rest, shutdown=do_shutdown, restart=do_restart, retries=retries)
+        return cmd_run(config, rest, shutdown=do_shutdown, restart=do_restart, retries=retries, delay=delay)
     if arg1 == "init":
         inherit = parse_flag(args[1:], "--inherit")
         return cmd_init(global_mode=global_mode, inherit=inherit)
