@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
+import fcntl
 import json
 import os
 import pty
 import re
 import select
+import struct
 import subprocess
 import sys
+import termios
 import urllib.request
 import urllib.error
 
@@ -207,6 +210,13 @@ def cmd_config(global_mode, args):
 
 def run_once(config, command, attempt=None):
     master_fd, slave_fd = pty.openpty()
+
+    try:
+        cols, rows = os.get_terminal_size(sys.stdout.fileno())
+    except OSError:
+        cols, rows = 120, 30
+    fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
     p = subprocess.Popen(command, stdout=slave_fd, stderr=slave_fd)
     os.close(slave_fd)
 
