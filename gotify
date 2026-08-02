@@ -209,7 +209,7 @@ def cmd_config(global_mode, args):
     return 0
 
 
-def run_once(config, command, attempt=None):
+def run_once(config, command, attempt=None, send_start=True):
     master_fd, slave_fd = pty.openpty()
 
     try:
@@ -226,12 +226,13 @@ def run_once(config, command, attempt=None):
     cmd_str = " ".join(command)
     short_name = cmd_str.split()[0]
 
-    started_msg = "Command started: {}".format(cmd_str)
-    started_title = "{} started".format(short_name)
-    if attempt is not None:
-        started_msg += " (attempt {})".format(attempt)
-        started_title += " (attempt {})".format(attempt)
-    send_gotify(config, started_msg, title=started_title)
+    if send_start:
+        started_msg = "Command started: {}".format(cmd_str)
+        started_title = "{} started".format(short_name)
+        if attempt is not None:
+            started_msg += " (attempt {})".format(attempt)
+            started_title += " (attempt {})".format(attempt)
+        send_gotify(config, started_msg, title=started_title)
 
     patterns = []
     for item in config.get("watch", []):
@@ -303,7 +304,9 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3)
     exit_code = None
     while True:
         attempt += 1
-        exit_code, _, _ = run_once(config, command, attempt=attempt if restart else None)
+        exit_code, _, _ = run_once(config, command,
+                                   attempt=attempt if restart else None,
+                                   send_start=attempt == 1)
         if exit_code == 0 or not restart or (retries >= 0 and attempt > retries):
             break
         retry_msg = "[RESTART] {} failed (exit: {}), attempt {}".format(
