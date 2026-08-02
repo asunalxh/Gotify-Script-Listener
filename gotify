@@ -284,7 +284,7 @@ def run_once(config, command, attempt=None):
     return p.wait(), short_name, cmd_str
 
 
-def cmd_run(config, command, shutdown=False, restart=False, retries=0):
+def cmd_run(config, command, shutdown=False, restart=False, retries=-1):
     cmd_str = " ".join(command)
     short_name = cmd_str.split()[0]
 
@@ -293,7 +293,7 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=0):
     while True:
         attempt += 1
         exit_code, _, _ = run_once(config, command, attempt=attempt if restart else None)
-        if exit_code == 0 or not restart or (retries > 0 and attempt > retries):
+        if exit_code == 0 or not restart or (retries >= 0 and attempt > retries):
             break
         retry_msg = "{} failed (exit: {}), restarting (attempt {})".format(
             short_name, exit_code, attempt)
@@ -430,7 +430,7 @@ Run:
   gotify run [--shutdown] [--restart [--retries N]] <command...>
                                 run command, notify on match/completion/failure
                                 --restart: re-run on failure until success
-                                --retries: max restarts (0 = infinite, default)
+                                --retries: max restarts (-1 = infinite, default)
 
 Config:
   gotify config                     show current config
@@ -480,11 +480,11 @@ def main():
         rest = args[1:]
         do_shutdown = parse_flag(rest, "--shutdown")
         do_restart = parse_flag(rest, "--restart")
-        retries = 0
+        retries = -1
         if "--retries" in rest:
             idx = rest.index("--retries")
             try:
-                retries = max(0, int(rest[idx + 1]))
+                retries = int(rest[idx + 1])
             except (ValueError, IndexError):
                 print("Error: --retries requires a number.", file=sys.stderr)
                 return 1

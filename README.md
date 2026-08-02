@@ -29,7 +29,7 @@ echo "hello" | gotify
 gotify run <命令...>
 gotify --global run <命令...>
 
-# 失败自动重启（无限重试直到成功；--retries 限定次数，0=无限）
+# 失败自动重启（无限重试直到成功；--retries 限定次数，-1=无限）
 gotify run --restart make build
 gotify run --restart --retries 3 make build
 
