@@ -205,7 +205,7 @@ def cmd_config(global_mode, args):
     return 0
 
 
-def cmd_run(config, command, shutdown=False):
+def run_once(config, command, attempt=None):
     master_fd, slave_fd = pty.openpty()
     p = subprocess.Popen(command, stdout=slave_fd, stderr=slave_fd)
     os.close(slave_fd)
@@ -215,8 +215,12 @@ def cmd_run(config, command, shutdown=False):
     cmd_str = " ".join(command)
     short_name = cmd_str.split()[0]
 
-    send_gotify(config, "Command started: {}".format(cmd_str),
-                title="{} started".format(short_name))
+    started_msg = "Command started: {}".format(cmd_str)
+    started_title = "{} started".format(short_name)
+    if attempt is not None:
+        started_msg += " (attempt {})".format(attempt)
+        started_title += " (attempt {})".format(attempt)
+    send_gotify(config, started_msg, title=started_title)
 
     patterns = []
     for item in config.get("watch", []):
@@ -277,7 +281,25 @@ def cmd_run(config, command, shutdown=False):
                                 title="{} matched".format(short_name))
         sys.stdout.flush()
 
-    exit_code = p.wait()
+    return p.wait(), short_name, cmd_str
+
+
+def cmd_run(config, command, shutdown=False, restart=False, retries=3):
+    cmd_str = " ".join(command)
+    short_name = cmd_str.split()[0]
+
+    attempt = 0
+    exit_code = None
+    while True:
+        attempt += 1
+        exit_code, _, _ = run_once(config, command, attempt=attempt if restart else None)
+        if exit_code == 0 or not restart or attempt > retries:
+            break
+        retry_msg = "{} failed (exit: {}), restarting (attempt {}/{})".format(
+            short_name, exit_code, attempt, retries)
+        send_gotify(config, retry_msg,
+                    title="{} restarting".format(short_name))
+        print("Restarting (attempt {}/{})...".format(attempt, retries))
 
     if exit_code != 0:
         title = "{} failed (exit: {})".format(short_name, exit_code)
@@ -405,8 +427,10 @@ Send:
   <command> | gotify                pipe message to gotify
 
 Run:
-  gotify run [--shutdown] <command...>
+  gotify run [--shutdown] [--restart [--retries N]] <command...>
                                 run command, notify on match/completion/failure
+                                --restart: re-run on failure
+                                --retries: max restarts (default 3)
 
 Config:
   gotify config                     show current config
@@ -455,7 +479,17 @@ def main():
     if arg1 == "run":
         rest = args[1:]
         do_shutdown = parse_flag(rest, "--shutdown")
-        rest = [a for a in rest if a != "--shutdown"]
+        do_restart = parse_flag(rest, "--restart")
+        retries = 3
+        if "--retries" in rest:
+            idx = rest.index("--retries")
+            try:
+                retries = max(1, int(rest[idx + 1]))
+            except (ValueError, IndexError):
+                print("Error: --retries requires a number.", file=sys.stderr)
+                return 1
+            del rest[idx:idx + 2]
+        rest = [a for a in rest if a not in ("--shutdown", "--restart")]
         if not rest:
             print("Error: run requires a command.", file=sys.stderr)
             return 1
@@ -463,7 +497,7 @@ def main():
         if not config["server_url"] or not config["app_token"]:
             print("Error: gotify not configured. Run: gotify init --global", file=sys.stderr)
             return 1
-        return cmd_run(config, rest, shutdown=do_shutdown)
+        return cmd_run(config, rest, shutdown=do_shutdown, restart=do_restart, retries=retries)
     if arg1 == "init":
         inherit = parse_flag(args[1:], "--inherit")
         return cmd_init(global_mode=global_mode, inherit=inherit)

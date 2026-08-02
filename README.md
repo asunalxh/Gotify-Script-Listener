@@ -29,6 +29,12 @@ echo "hello" | gotify
 gotify run <命令...>
 gotify --global run <命令...>
 
+# 失败自动重启（最多重试 N 次，默认 3）
+gotify run --restart --retries 3 make build
+
+# 结束后自动关机
+gotify run --shutdown make build
+
 # 配置管理
 gotify config                     # 查看当前配置
 gotify config <key>               # 查看单项
@@ -43,8 +49,9 @@ gotify --global config <key> <v>  # 设置全局配置
 | 时机 | 标题示例 | 内容 |
 |------|---------|------|
 | 启动 | `make started` | Command started: make build |
-| 完成 | `make completed` | Command finished successfully |
-| 失败 | `make failed (exit: 1)` | Command exited with code 1 |
+| 重启 | `make restarting` | make failed (exit: 1), restarting (attempt 1/3) |
+| 完成 | `make completed` | make build finished |
+| 失败 | `make failed (exit: 1)` | make build (exit: 1) |
 
 ## 正则捕获
 
