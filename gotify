@@ -305,11 +305,11 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=-1):
         exit_code, _, _ = run_once(config, command, attempt=attempt if restart else None)
         if exit_code == 0 or not restart or (retries >= 0 and attempt > retries):
             break
-        retry_msg = "{} failed (exit: {}), restarting (attempt {})".format(
+        retry_msg = "[RESTART] {} failed (exit: {}), attempt {}".format(
             short_name, exit_code, attempt)
         send_gotify(config, retry_msg,
-                    title="{} restarting".format(short_name))
-        print("Restarting (attempt {})...".format(attempt))
+                    title="[RESTART] {}".format(short_name))
+        print("[RESTART] {} failed (exit: {}), restarting (attempt {})".format(short_name, exit_code, attempt))
 
     if exit_code != 0:
         title = "{} failed (exit: {})".format(short_name, exit_code)
