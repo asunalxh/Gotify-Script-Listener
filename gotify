@@ -344,12 +344,26 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3)
 
     if shutdown:
         shutdown_cmd = os.environ.get("SHUTDOWN_CMD", "shutdown -h now")
-        print("Shutting down ({}: {})...".format("SHUTDOWN_CMD" if "SHUTDOWN_CMD" in os.environ else "default", shutdown_cmd))
-        result = subprocess.run(shutdown_cmd, shell=True, capture_output=True, text=True)
-        if result.returncode != 0:
-            print("Shutdown failed (exit: {}): {}".format(result.returncode, result.stderr.strip() or result.stdout.strip()), file=sys.stderr)
-        else:
-            print("Shutdown initiated")
+        delay = int(os.environ.get("SHUTDOWN_DELAY", "30"))
+
+        cancelled = False
+        try:
+            for i in range(delay, 0, -1):
+                sys.stdout.write("\rSystem will shut down in {:>2}s, press Ctrl+C to cancel...".format(i))
+                sys.stdout.flush()
+                time.sleep(1)
+            sys.stdout.write("\n")
+        except KeyboardInterrupt:
+            sys.stdout.write("\nShutdown cancelled.\n")
+            cancelled = True
+
+        if not cancelled:
+            print("Shutting down ({}: {})...".format("SHUTDOWN_CMD" if "SHUTDOWN_CMD" in os.environ else "default", shutdown_cmd))
+            result = subprocess.run(shutdown_cmd, shell=True, capture_output=True, text=True)
+            if result.returncode != 0:
+                print("Shutdown failed (exit: {}): {}".format(result.returncode, result.stderr.strip() or result.stdout.strip()), file=sys.stderr)
+            else:
+                print("Shutdown initiated")
 
     return exit_code
 
