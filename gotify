@@ -420,6 +420,43 @@ def cmd_uninstall(user_mode=True):
     return 0
 
 
+def cmd_test(config):
+    if not config["server_url"]:
+        print("Error: server_url not configured.", file=sys.stderr)
+        print("Set it via: gotify config server_url <url>", file=sys.stderr)
+        return 1
+    if not config["app_token"]:
+        print("Error: app_token not configured.", file=sys.stderr)
+        print("Set it via: gotify config app_token <token>", file=sys.stderr)
+        return 1
+
+    url = config["server_url"].rstrip("/") + "/message?token=" + config["app_token"]
+    data = json.dumps({
+        "message": "Gotify connectivity test OK",
+        "priority": int(config["priority"]),
+        "title": "{} connectivity test".format(config["title"]),
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+            print("OK: connected to {} (message id: {})".format(
+                config["server_url"], result.get("id", "?")))
+            return 0
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print("FAIL: HTTP {} - {}".format(e.code, body), file=sys.stderr)
+        return 1
+    except urllib.error.URLError as e:
+        print("FAIL: cannot reach {}: {}".format(config["server_url"], e.reason), file=sys.stderr)
+        return 1
+    except Exception as e:
+        print("FAIL: {}".format(e), file=sys.stderr)
+        return 1
+
+
 def parse_global(args):
     if "--global" in args:
         args.remove("--global")
@@ -446,6 +483,7 @@ Config:
   gotify config <key>               show a config value
   gotify config <key> <value>       set a config value
   gotify init                       create config file
+  gotify test                       test connectivity to gotify server
 
 System:
   gotify install [--system]           install gotify (default: ~/.local/bin)
@@ -521,6 +559,8 @@ def main():
         return cmd_init(global_mode=global_mode, inherit=inherit)
     if arg1 == "config":
         return cmd_config(global_mode, args[1:])
+    if arg1 == "test":
+        return cmd_test(get_config(global_mode))
 
     message = " ".join(args)
     config = get_config(global_mode)
