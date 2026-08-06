@@ -103,9 +103,6 @@ def write_config(target_file, config):
 
 def cmd_init(global_mode=False, inherit=False):
     if global_mode:
-        if not sys.stdin.isatty():
-            print("Error: 'init --global' requires an interactive terminal.", file=sys.stderr)
-            return 1
         target_file = GLOBAL_CONFIG_FILE
         source_cfg = dict(DEFAULTS)
     else:
@@ -118,14 +115,14 @@ def cmd_init(global_mode=False, inherit=False):
             if os.path.exists(target_file):
                 print("{} already exists (skipped).".format(target_file))
                 return 0
-            cfg = {}
-            if not sys.stdin.isatty():
-                cfg["title"] = source_cfg["title"]
-                cfg["priority"] = source_cfg["priority"]
-            else:
+            cfg = {
+                "server_url": global_cfg["server_url"],
+                "app_token": global_cfg["app_token"],
+            }
+            if sys.stdin.isatty():
                 print("server_url: {} (inherited from global)".format(global_cfg["server_url"]))
                 print("app_token: {} (inherited from global)".format(global_cfg["app_token"]))
-                for key in ("title", "priority"):
+                for key in ("title", "priority", "name"):
                     label = dict(PROMPTS)[key]
                     default = str(source_cfg.get(key, ""))
                     prompt = "{} [{}]: ".format(label, default) if default else "{}: ".format(label)
@@ -135,13 +132,12 @@ def cmd_init(global_mode=False, inherit=False):
                         print("\nAborted.")
                         return 1
                     cfg[key] = value.strip() if value.strip() else source_cfg.get(key, "")
+            else:
+                for key in ("title", "priority", "name"):
+                    cfg[key] = source_cfg.get(key, "")
             write_config(target_file, cfg)
             print("Created {} (url/token inherited from global)".format(target_file))
             return 0
-
-        if not sys.stdin.isatty():
-            print("Error: 'init' requires an interactive terminal (global config not set).", file=sys.stderr)
-            return 1
 
     if os.path.exists(target_file):
         try:
