@@ -197,12 +197,6 @@ def cmd_config(global_mode, args):
     cfg = load_json(target_file)
     cfg[key] = value
 
-    if not global_mode:
-        global_cfg = load_json(GLOBAL_CONFIG_FILE)
-        for k in list(cfg.keys()):
-            if k in global_cfg and cfg[k] == global_cfg[k]:
-                del cfg[k]
-
     if target_dir:
         os.makedirs(target_dir, exist_ok=True)
 
