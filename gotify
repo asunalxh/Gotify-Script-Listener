@@ -329,24 +329,7 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3)
         title = "{} completed".format(short_name)
         message = "{} finished".format(cmd_str)
 
-    url = config["server_url"].rstrip("/") + "/message?token=" + config["app_token"]
-    data = json.dumps({
-        "message": message,
-        "priority": int(config["priority"]),
-        "title": title,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}, method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req) as resp:
-            result = json.loads(resp.read())
-            print("Notification sent (id: {})".format(result.get("id", "?")))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        print("Notify error: HTTP {} - {}".format(e.code, body), file=sys.stderr)
-    except urllib.error.URLError as e:
-        print("Notify error: {}".format(e.reason), file=sys.stderr)
+    send_gotify(config, message, title=title)
 
     if shutdown:
         shutdown_cmd = os.environ.get("SHUTDOWN_CMD", "shutdown -h now")
