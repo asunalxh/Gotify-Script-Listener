@@ -67,11 +67,14 @@ gotify --global config <key> <v>  # 设置全局配置
     "app_token": "your-token",
     "priority": 5,
     "title": "my-project",
+    "name": "server-1",
     "watch": ["ERROR", "FAIL", "panic"]
 }
 ```
 
 匹配到 `ERROR` 时立即推送匹配行。
+
+`name` 字段用于标识发信设备，设置后所有通知标题自动带 `[name]` 前缀，例如 `[server-1] make completed`。
 
 ## 配置文件
 

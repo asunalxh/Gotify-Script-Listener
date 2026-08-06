@@ -22,6 +22,7 @@ PROMPTS = [
     ("app_token", "App token"),
     ("priority",  "Priority"),
     ("title",     "Title"),
+    ("name",      "Device name"),
 ]
 
 DEFAULTS = {
@@ -29,6 +30,7 @@ DEFAULTS = {
     "app_token": "",
     "priority": 5,
     "title": "gotify-cli",
+    "name": "",
     "watch": [],
 }
 
@@ -58,11 +60,15 @@ def get_config(global_mode=False):
 
 
 def send_gotify(config, message, title=None):
+    final_title = title if title else config["title"]
+    name = config.get("name", "")
+    if name:
+        final_title = "[{}] {}".format(name, final_title)
     url = config["server_url"].rstrip("/") + "/message?token=" + config["app_token"]
     data = json.dumps({
         "message": message,
         "priority": int(config["priority"]),
-        "title": title if title else config["title"],
+        "title": final_title,
     }).encode("utf-8")
 
     req = urllib.request.Request(
