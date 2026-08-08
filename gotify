@@ -31,6 +31,7 @@ DEFAULTS = {
     "priority": 5,
     "title": "gotify-cli",
     "name": "",
+    "shutdown_delay": 30,
     "watch": [],
 }
 
@@ -323,7 +324,7 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3)
 
     if shutdown:
         shutdown_cmd = os.environ.get("SHUTDOWN_CMD", "shutdown -h now")
-        delay = int(os.environ.get("SHUTDOWN_DELAY", "30"))
+        delay = int(config.get("shutdown_delay", 30))
 
         cancelled = False
         try:

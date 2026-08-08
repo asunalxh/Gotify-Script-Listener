@@ -36,8 +36,9 @@ gotify run --restart --retries 3 make build
 # 结束后自动关机（默认 30s 倒计时，Ctrl+C 可取消）
 gotify run --shutdown make build
 
-# 可配置：SHUTDOWN_DELAY 倒计时秒数，SHUTDOWN_CMD 关机命令
-SHUTDOWN_DELAY=10 gotify run --shutdown make build
+# 倒计时秒数通过配置项 shutdown_delay 设置，关机命令通过 SHUTDOWN_CMD 环境变量设置
+gotify config shutdown_delay 10
+SHUTDOWN_CMD="sudo shutdown -h now" gotify run --shutdown make build
 
 # 配置管理
 gotify config                     # 查看当前配置
