@@ -297,7 +297,7 @@ def run_once(config, command, attempt=None, send_start=True):
                                 title="{} matched".format(short_name))
         sys.stdout.flush()
 
-    return p.wait(), short_name, cmd_str
+    return p.wait(), short_name, cmd_str, output_lines
 
 
 def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3):
@@ -306,11 +306,13 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3)
 
     attempt = 0
     exit_code = None
+    last_output = []
     while True:
         attempt += 1
-        exit_code, _, _ = run_once(config, command,
-                                   attempt=attempt if restart else None,
-                                   send_start=attempt == 1)
+        exit_code, _, _, last_output = run_once(
+            config, command,
+            attempt=attempt if restart else None,
+            send_start=attempt == 1)
         if exit_code == 0 or not restart or (retries >= 0 and attempt > retries):
             break
         retry_msg = "[RESTART] {} failed (exit: {}), attempt {}".format(
@@ -323,6 +325,10 @@ def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3)
     if exit_code != 0:
         title = "{} failed (exit: {})".format(short_name, exit_code)
         message = "{} (exit: {})".format(cmd_str, exit_code)
+        err_lines = [l for l in last_output if l.strip()]
+        if err_lines:
+            tail = "\n".join(err_lines[-50:])
+            message += "\n\n" + tail
     else:
         title = "{} completed".format(short_name)
         message = "{} finished".format(cmd_str)

@@ -54,9 +54,9 @@ gotify --global config <key> <v>  # 设置全局配置
 | 时机 | 标题示例 | 内容 |
 |------|---------|------|
 | 启动 | `make started` | Command started: make build |
-| 重启 | `make restarting` | make failed (exit: 1), restarting (attempt 1/3) |
+| 重启 | `[RESTART] make` | make failed (exit: 1), attempt 1 |
 | 完成 | `make completed` | make build finished |
-| 失败 | `make failed (exit: 1)` | make build (exit: 1) |
+| 失败 | `make failed (exit: 1)` | make build (exit: 1)，附报错输出 |
 
 ## 正则捕获
 
