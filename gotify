@@ -475,6 +475,25 @@ def cmd_test(config):
         return 1
 
 
+def cmd_update_config(global_mode=False):
+    target_file = GLOBAL_CONFIG_FILE if global_mode else PROJECT_CONFIG_FILE
+    if not os.path.exists(target_file):
+        print("Error: {} does not exist.".format(target_file), file=sys.stderr)
+        return 1
+    cfg = load_json(target_file)
+    added = []
+    for key, default in DEFAULTS.items():
+        if key not in cfg:
+            cfg[key] = default
+            added.append(key)
+    if not added:
+        print("Config is already up to date: {}".format(target_file))
+        return 0
+    write_config(target_file, cfg)
+    print("Updated {}: added {}".format(target_file, ", ".join(added)))
+    return 0
+
+
 def parse_global(args):
     if "--global" in args:
         args.remove("--global")
@@ -500,6 +519,7 @@ Config:
   gotify config                     show current config
   gotify config <key>               show a config value
   gotify config <key> <value>       set a config value
+  gotify update-config              update config to latest format (add missing fields)
   gotify init                       create config file
   gotify test                       test connectivity to gotify server
 
@@ -591,6 +611,8 @@ Example:
         return cmd_init(global_mode=global_mode, inherit=inherit)
     if arg1 == "config":
         return cmd_config(global_mode, args[1:])
+    if arg1 in ("update-config", "config-update"):
+        return cmd_update_config(global_mode)
     if arg1 == "test":
         return cmd_test(get_config(global_mode))
 
