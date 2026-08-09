@@ -181,8 +181,7 @@ def cmd_config(global_mode, args):
     target_dir = os.path.dirname(target_file)
 
     if not args:
-        print("Usage: gotify config <show|get|set|update|help>", file=sys.stderr)
-        return 1
+        return config_help()
 
     sub = args[0]
 
@@ -543,7 +542,7 @@ Run:
   gotify run [--shutdown] [--restart [--retries N] [--delay SEC]] <command...>
                                 run command, notify on match/completion/failure
                                 --restart: re-run on failure until success
-                                --retries: max restarts (-1 = infinite, default)
+                                --retries: max restarts (-1 = infinite, default from config 'retries')
                                 --delay: wait SEC seconds before restart (default 3)
 
 Config:
