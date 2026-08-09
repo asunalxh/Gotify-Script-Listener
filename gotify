@@ -32,6 +32,7 @@ DEFAULTS = {
     "title": "gotify-cli",
     "name": "",
     "shutdown_delay": 30,
+    "retries": -1,
     "watch": [],
 }
 
@@ -300,9 +301,12 @@ def run_once(config, command, attempt=None, send_start=True):
     return p.wait(), short_name, cmd_str, output_lines
 
 
-def cmd_run(config, command, shutdown=False, restart=False, retries=-1, delay=3):
+def cmd_run(config, command, shutdown=False, restart=False, retries=None, delay=3):
     cmd_str = " ".join(command)
     short_name = cmd_str.split()[0]
+
+    if retries is None:
+        retries = int(config.get("retries", -1))
 
     attempt = 0
     exit_code = None
@@ -546,7 +550,7 @@ def main():
 Options:
   --shutdown    power off after completion (30s countdown, Ctrl+C cancels)
   --restart     re-run on failure until success
-  --retries N   max restarts (-1 = infinite, default)
+  --retries N   max restarts (-1 = infinite; default from config 'retries')
   --delay SEC   wait SEC seconds before restart (default 3)
 
 Example:
@@ -555,7 +559,7 @@ Example:
             return 0
         do_shutdown = parse_flag(rest, "--shutdown")
         do_restart = parse_flag(rest, "--restart")
-        retries = -1
+        retries = None
         delay = 3
         if "--retries" in rest:
             idx = rest.index("--retries")

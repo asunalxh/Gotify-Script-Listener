@@ -29,9 +29,10 @@ echo "hello" | gotify
 gotify run <命令...>
 gotify --global run <命令...>
 
-# 失败自动重启（无限重试直到成功；--retries 限定次数，-1=无限）
+# 失败自动重启（无限重试直到成功；--retries 覆盖 config 的 retries 项，-1=无限）
 gotify run --restart make build
 gotify run --restart --retries 3 make build
+gotify config retries 3   # 在 config 中设置默认重试次数
 
 # 结束后自动关机（默认 30s 倒计时，Ctrl+C 可取消）
 gotify run --shutdown make build
