@@ -169,15 +169,10 @@ def cmd_init(global_mode=False, inherit=False):
 
 def config_help():
     print("""Manage config:
-  gotify config                     show all values
-  gotify config show [key]          show all (or one) values
-  gotify config get <key>           show one value
-  gotify config set <key> <value>   set a value
-  gotify config update              update config to latest format
-
-Backward compatible:
-  gotify config <key>               show one value
-  gotify config <key> <value>       set a value""")
+  gotify config show               show all values
+  gotify config get <key>          show one value
+  gotify config set <key> <value>  set a value
+  gotify config update             update config to latest format""")
     return 0
 
 
@@ -185,22 +180,16 @@ def cmd_config(global_mode, args):
     target_file = GLOBAL_CONFIG_FILE if global_mode else PROJECT_CONFIG_FILE
     target_dir = os.path.dirname(target_file)
 
-    sub = args[0] if args else "show"
+    if not args:
+        print("Usage: gotify config <show|get|set|update|help>", file=sys.stderr)
+        return 1
+
+    sub = args[0]
 
     if sub in ("-h", "--help", "help"):
         return config_help()
 
-    if sub in ("show", "list"):
-        if len(args) > 1:
-            key = args[1]
-            if key not in DEFAULTS:
-                print("Error: unknown key '{}'. Valid keys: {}".format(key, ", ".join(DEFAULTS)), file=sys.stderr)
-                return 1
-            cfg = load_json(target_file)
-            val = cfg.get(key) if key in cfg else None
-            if val is not None:
-                print("{} = {}".format(key, val))
-            return 0
+    if sub == "show":
         cfg = load_json(target_file)
         for key in DEFAULTS:
             val = cfg.get(key) if key in cfg else None
@@ -244,15 +233,6 @@ def cmd_config(global_mode, args):
 
     if sub == "update":
         return cmd_update_config(global_mode)
-
-    if sub in DEFAULTS:
-        if len(args) == 1:
-            cfg = load_json(target_file)
-            val = cfg.get(sub) if sub in cfg else None
-            if val is not None:
-                print("{} = {}".format(sub, val))
-            return 0
-        return cmd_config(global_mode, ["set"] + args)
 
     print("Error: unknown config subcommand '{}'. Run: gotify config help".format(sub), file=sys.stderr)
     return 1
@@ -567,9 +547,10 @@ Run:
                                 --delay: wait SEC seconds before restart (default 3)
 
 Config:
-  gotify config                     show current config
-  gotify config set <key> <value>   set a config value
+  gotify config                     show config subcommand help
+  gotify config show                show all config values
   gotify config get <key>           show a config value
+  gotify config set <key> <value>   set a config value
   gotify config update              update config to latest format
   gotify init                       create config file
   gotify test                       test connectivity to gotify server
