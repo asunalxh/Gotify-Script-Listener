@@ -167,11 +167,40 @@ def cmd_init(global_mode=False, inherit=False):
     return 0
 
 
+def config_help():
+    print("""Manage config:
+  gotify config                     show all values
+  gotify config show [key]          show all (or one) values
+  gotify config get <key>           show one value
+  gotify config set <key> <value>   set a value
+  gotify config update              update config to latest format
+
+Backward compatible:
+  gotify config <key>               show one value
+  gotify config <key> <value>       set a value""")
+    return 0
+
+
 def cmd_config(global_mode, args):
     target_file = GLOBAL_CONFIG_FILE if global_mode else PROJECT_CONFIG_FILE
     target_dir = os.path.dirname(target_file)
 
-    if not args:
+    sub = args[0] if args else "show"
+
+    if sub in ("-h", "--help", "help"):
+        return config_help()
+
+    if sub in ("show", "list"):
+        if len(args) > 1:
+            key = args[1]
+            if key not in DEFAULTS:
+                print("Error: unknown key '{}'. Valid keys: {}".format(key, ", ".join(DEFAULTS)), file=sys.stderr)
+                return 1
+            cfg = load_json(target_file)
+            val = cfg.get(key) if key in cfg else None
+            if val is not None:
+                print("{} = {}".format(key, val))
+            return 0
         cfg = load_json(target_file)
         for key in DEFAULTS:
             val = cfg.get(key) if key in cfg else None
@@ -179,32 +208,54 @@ def cmd_config(global_mode, args):
                 print("{} = {}".format(key, val))
         return 0
 
-    key = args[0]
-    if key not in DEFAULTS:
-        print("Error: unknown key '{}'. Valid keys: {}".format(key, ", ".join(DEFAULTS)), file=sys.stderr)
-        return 1
-
-    if len(args) == 1:
+    if sub == "get":
+        if len(args) < 2:
+            print("Usage: gotify config get <key>", file=sys.stderr)
+            return 1
+        key = args[1]
+        if key not in DEFAULTS:
+            print("Error: unknown key '{}'. Valid keys: {}".format(key, ", ".join(DEFAULTS)), file=sys.stderr)
+            return 1
         cfg = load_json(target_file)
         val = cfg.get(key) if key in cfg else None
         if val is not None:
             print("{} = {}".format(key, val))
         return 0
 
-    value = " ".join(args[1:])
-    cfg = load_json(target_file)
-    cfg[key] = value
+    if sub == "set":
+        if len(args) < 3:
+            print("Usage: gotify config set <key> <value>", file=sys.stderr)
+            return 1
+        key = args[1]
+        if key not in DEFAULTS:
+            print("Error: unknown key '{}'. Valid keys: {}".format(key, ", ".join(DEFAULTS)), file=sys.stderr)
+            return 1
+        value = " ".join(args[2:])
+        cfg = load_json(target_file)
+        cfg[key] = value
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
+        with open(target_file, "w") as f:
+            json.dump(cfg, f, indent=4, ensure_ascii=False)
+            f.write("\n")
+        mode = "project" if target_file == PROJECT_CONFIG_FILE else "global"
+        print("Set {} = {} in {} config ({}).".format(key, value, mode, target_file))
+        return 0
 
-    if target_dir:
-        os.makedirs(target_dir, exist_ok=True)
+    if sub == "update":
+        return cmd_update_config(global_mode)
 
-    with open(target_file, "w") as f:
-        json.dump(cfg, f, indent=4, ensure_ascii=False)
-        f.write("\n")
+    if sub in DEFAULTS:
+        if len(args) == 1:
+            cfg = load_json(target_file)
+            val = cfg.get(sub) if sub in cfg else None
+            if val is not None:
+                print("{} = {}".format(sub, val))
+            return 0
+        return cmd_config(global_mode, ["set"] + args)
 
-    mode = "project" if target_file == PROJECT_CONFIG_FILE else "global"
-    print("Set {} = {} in {} config ({}).".format(key, value, mode, target_file))
-    return 0
+    print("Error: unknown config subcommand '{}'. Run: gotify config help".format(sub), file=sys.stderr)
+    return 1
 
 
 def run_once(config, command, attempt=None, send_start=True):
@@ -517,9 +568,9 @@ Run:
 
 Config:
   gotify config                     show current config
-  gotify config <key>               show a config value
-  gotify config <key> <value>       set a config value
-  gotify update-config              update config to latest format (add missing fields)
+  gotify config set <key> <value>   set a config value
+  gotify config get <key>           show a config value
+  gotify config update              update config to latest format
   gotify init                       create config file
   gotify test                       test connectivity to gotify server
 
