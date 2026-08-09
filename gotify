@@ -215,7 +215,14 @@ def run_once(config, command, attempt=None, send_start=True):
         cols, rows = 120, 30
     fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
-    p = subprocess.Popen(command, stdout=slave_fd, stderr=slave_fd)
+    try:
+        p = subprocess.Popen(command, stdout=slave_fd, stderr=slave_fd)
+    except FileNotFoundError:
+        os.close(slave_fd)
+        os.close(master_fd)
+        cmd_str = " ".join(command)
+        print("Error: command not found: {}".format(cmd_str), file=sys.stderr)
+        return 127, cmd_str.split()[0], cmd_str
     os.close(slave_fd)
 
     output_lines = []
@@ -526,6 +533,20 @@ def main():
         return cmd_uninstall(user_mode=user_mode)
     if arg1 == "run":
         rest = args[1:]
+        if rest and rest[0] in ("-h", "--help"):
+            print("""Run command and notify:
+  gotify run [options] <command...>
+
+Options:
+  --shutdown    power off after completion (30s countdown, Ctrl+C cancels)
+  --restart     re-run on failure until success
+  --retries N   max restarts (-1 = infinite, default)
+  --delay SEC   wait SEC seconds before restart (default 3)
+
+Example:
+  gotify run make build
+  gotify run --restart --retries 3 --shutdown python train.py""")
+            return 0
         do_shutdown = parse_flag(rest, "--shutdown")
         do_restart = parse_flag(rest, "--restart")
         retries = -1
